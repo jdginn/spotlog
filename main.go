@@ -59,77 +59,12 @@ func main() {
 	defer conn.Close(ctx)
 	db := models.New(conn)
 
-	recentlyPlayed, err := client.PlayerRecentlyPlayedOpt(ctx, &spotify.RecentlyPlayedOptions{Limit: 50, BeforeEpochMs: time.Now().UnixMilli()})
-	if err != nil {
-		panic(err)
-	}
-	for _, apiTrack := range recentlyPlayed {
-		err := db.CreateTrack(ctx, models.CreateTrackParams{
-			SpotifyID:  apiTrack.Track.ID.String(),
-			Name:       apiTrack.Track.Name,
-			DurationMs: pgtype.Int4{Int32: int32(apiTrack.Track.Duration)},
-		})
-		if err != nil {
-			panic(fmt.Errorf("Error creating Track in database: %w", err))
+	for {
+		log.Println("Pulling most recently played...")
+		if err := updateRecentlyPlayed(ctx, client, db); err != nil {
+			log.Println(err)
 		}
-		playlistContext := new(models.NullTrackPlayContext)
-		playlistContext.Scan(apiTrack.PlaybackContext.Type)
-		playlistIDs, err := db.ListPlaylistsByID(ctx)
-
-		if err != nil {
-			panic(fmt.Errorf("Error looking up playlist names: %w", err))
-		}
-		switch playlistContext.TrackPlayContext {
-		case models.TrackPlayContextPlaylist:
-
-			playlistID := spotify.ID(apiTrack.PlaybackContext.URI[len("spotify:playlist:"):])
-
-			// TODO: check whether we already have this playlist. Only pull from API if we do not have it.
-
-			if !slices.Contains(playlistIDs, playlistID.String()) {
-				apiPlaylist, err := client.GetPlaylist(ctx, spotify.ID(playlistID))
-				if err != nil {
-					// TODO: when this happens, just say we don't know the ID
-					err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
-						PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
-						TrackID:  apiTrack.Track.ID.String(),
-						Context:  *playlistContext,
-					})
-				} else {
-					err = db.CreatePlaylist(ctx, models.CreatePlaylistParams{
-						Name:      apiPlaylist.Name,
-						SpotifyID: apiPlaylist.ID.String(),
-					})
-					if err != nil {
-						panic(fmt.Errorf("Error creating Playlist in database: %w", err))
-					}
-				}
-			}
-			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
-				PlayedAt:   pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
-				TrackID:    apiTrack.Track.ID.String(),
-				Context:    *playlistContext,
-				PlaylistID: pgtype.Text{String: playlistID.String()},
-			})
-			if err != nil {
-				panic(fmt.Errorf("Error creating TrackPlay in database: %w", err))
-			}
-		case models.TrackPlayContextAlbum:
-			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
-				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
-				TrackID:  apiTrack.Track.ID.String(),
-				Context:  *playlistContext,
-			})
-			if err != nil {
-				panic(fmt.Errorf("Error creating TrackPlay in database: %w", err))
-			}
-		default:
-			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
-				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
-				TrackID:  apiTrack.Track.ID.String(),
-			})
-		}
-
+		time.Sleep(time.Minute * 15)
 	}
 
 }
@@ -149,4 +84,77 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	client := spotify.New(auth.Client(r.Context(), tok))
 	fmt.Fprintf(w, "Login Completed!")
 	ch <- client
+}
+
+func updateRecentlyPlayed(ctx context.Context, client *spotify.Client, db *models.Queries) error {
+	recentlyPlayed, err := client.PlayerRecentlyPlayedOpt(ctx, &spotify.RecentlyPlayedOptions{Limit: 50, BeforeEpochMs: time.Now().UnixMilli()})
+	if err != nil {
+		return fmt.Errorf("Error pulling most recently played tracks: %w")
+	}
+	for _, apiTrack := range recentlyPlayed {
+		err := db.CreateTrack(ctx, models.CreateTrackParams{
+			SpotifyID:  apiTrack.Track.ID.String(),
+			Name:       apiTrack.Track.Name,
+			DurationMs: pgtype.Int4{Int32: int32(apiTrack.Track.Duration)},
+		})
+		if err != nil {
+			return fmt.Errorf("Error creating Track in database: %w", err)
+		}
+		playlistContext := new(models.NullTrackPlayContext)
+		playlistContext.Scan(apiTrack.PlaybackContext.Type)
+		playlistIDs, err := db.ListPlaylistsByID(ctx)
+
+		if err != nil {
+			return fmt.Errorf("Error looking up playlist names: %w", err)
+		}
+		switch playlistContext.TrackPlayContext {
+		case models.TrackPlayContextPlaylist:
+
+			playlistID := spotify.ID(apiTrack.PlaybackContext.URI[len("spotify:playlist:"):])
+
+			if !slices.Contains(playlistIDs, playlistID.String()) {
+				apiPlaylist, err := client.GetPlaylist(ctx, spotify.ID(playlistID))
+				if err != nil {
+					// TODO: when this happens, just say we don't know the ID
+					err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+						PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+						TrackID:  apiTrack.Track.ID.String(),
+						Context:  *playlistContext,
+					})
+				} else {
+					err = db.CreatePlaylist(ctx, models.CreatePlaylistParams{
+						Name:      apiPlaylist.Name,
+						SpotifyID: apiPlaylist.ID.String(),
+					})
+					if err != nil {
+						return fmt.Errorf("Error creating Playlist in database: %w", err)
+					}
+				}
+			}
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt:   pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:    apiTrack.Track.ID.String(),
+				Context:    *playlistContext,
+				PlaylistID: pgtype.Text{String: playlistID.String()},
+			})
+			if err != nil {
+				return fmt.Errorf("Error creating TrackPlay in database: %w", err)
+			}
+		case models.TrackPlayContextAlbum:
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:  apiTrack.Track.ID.String(),
+				Context:  *playlistContext,
+			})
+			if err != nil {
+				return fmt.Errorf("Error creating TrackPlay in database: %w", err)
+			}
+		default:
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:  apiTrack.Track.ID.String(),
+			})
+		}
+	}
+	return nil
 }
