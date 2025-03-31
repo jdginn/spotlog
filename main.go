@@ -1,10 +1,3 @@
-// This example demonstrates how to authenticate with Spotify using the authorization code flow.
-// In order to run this example yourself, you'll need to:
-//
-//  1. Register an application at: https://developer.spotify.com/my-applications/
-//     - Use "http://localhost:8080/callback" as the redirect URI
-//  2. Set the SPOTIFY_ID environment variable to the client ID you got in step 1.
-//  3. Set the SPOTIFY_SECRET environment variable to the client secret from step 1.
 package main
 
 import (
@@ -13,17 +6,19 @@ import (
 	"github.com/zmb3/spotify/v2/auth"
 	"log"
 	"net/http"
+	"os"
+	"slices"
+	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zmb3/spotify/v2"
+
+	"github.com/jdginn/spotlog/models"
 )
 
-// redirectURI is the OAuth redirect URI for the application.
-// You must register an application at Spotify's developer portal
-// and enter this value.
-const redirectURI = "http://localhost:8080/callback"
-
 var (
-	auth  = spotifyauth.New(spotifyauth.WithRedirectURL(redirectURI), spotifyauth.WithScopes(spotifyauth.ScopeUserReadPrivate))
+	auth  = spotifyauth.New(spotifyauth.WithRedirectURL(os.Getenv("REDIRECT_URI")), spotifyauth.WithScopes(spotifyauth.ScopeUserReadRecentlyPlayed))
 	ch    = make(chan *spotify.Client)
 	state = "abc123"
 )
@@ -47,12 +42,96 @@ func main() {
 	// wait for auth to complete
 	client := <-ch
 
+	ctx := context.Background()
 	// use the client to make calls that require authorization
-	user, err := client.CurrentUser(context.Background())
+	user, err := client.CurrentUser(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("You are logged in as:", user.ID)
+
+	// Open connection to database
+	conn, err := pgx.Connect(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close(ctx)
+	db := models.New(conn)
+
+	recentlyPlayed, err := client.PlayerRecentlyPlayedOpt(ctx, &spotify.RecentlyPlayedOptions{Limit: 50, BeforeEpochMs: time.Now().UnixMilli()})
+	if err != nil {
+		panic(err)
+	}
+	for _, apiTrack := range recentlyPlayed {
+		err := db.CreateTrack(ctx, models.CreateTrackParams{
+			SpotifyID:  apiTrack.Track.ID.String(),
+			Name:       apiTrack.Track.Name,
+			DurationMs: pgtype.Int4{Int32: int32(apiTrack.Track.Duration)},
+		})
+		if err != nil {
+			panic(fmt.Errorf("Error creating Track in database: %w", err))
+		}
+		playlistContext := new(models.NullTrackPlayContext)
+		playlistContext.Scan(apiTrack.PlaybackContext.Type)
+		playlistIDs, err := db.ListPlaylistsByID(ctx)
+
+		if err != nil {
+			panic(fmt.Errorf("Error looking up playlist names: %w", err))
+		}
+		switch playlistContext.TrackPlayContext {
+		case models.TrackPlayContextPlaylist:
+
+			playlistID := spotify.ID(apiTrack.PlaybackContext.URI[len("spotify:playlist:"):])
+
+			// TODO: check whether we already have this playlist. Only pull from API if we do not have it.
+
+			if !slices.Contains(playlistIDs, playlistID.String()) {
+				apiPlaylist, err := client.GetPlaylist(ctx, spotify.ID(playlistID))
+				if err != nil {
+					// TODO: when this happens, just say we don't know the ID
+					err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+						PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+						TrackID:  apiTrack.Track.ID.String(),
+						Context:  *playlistContext,
+					})
+				} else {
+					err = db.CreatePlaylist(ctx, models.CreatePlaylistParams{
+						Name:      apiPlaylist.Name,
+						SpotifyID: apiPlaylist.ID.String(),
+					})
+					if err != nil {
+						panic(fmt.Errorf("Error creating Playlist in database: %w", err))
+					}
+				}
+			}
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt:   pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:    apiTrack.Track.ID.String(),
+				Context:    *playlistContext,
+				PlaylistID: pgtype.Text{String: playlistID.String()},
+			})
+			if err != nil {
+				panic(fmt.Errorf("Error creating TrackPlay in database: %w", err))
+			}
+		case models.TrackPlayContextAlbum:
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:  apiTrack.Track.ID.String(),
+				Context:  *playlistContext,
+			})
+			if err != nil {
+				panic(fmt.Errorf("Error creating TrackPlay in database: %w", err))
+			}
+		default:
+			err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
+				PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
+				TrackID:  apiTrack.Track.ID.String(),
+			})
+		}
+
+	}
+
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
