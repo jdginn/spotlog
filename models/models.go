@@ -55,6 +55,10 @@ func (ns NullTrackPlayContext) Value() (driver.Value, error) {
 	return string(ns.TrackPlayContext), nil
 }
 
+type Dislike struct {
+	CreatedAt pgtype.Timestamptz
+}
+
 type Like struct {
 	CreatedAt pgtype.Timestamptz
 }

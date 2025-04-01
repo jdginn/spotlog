@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createDislike = `-- name: CreateDislike :exec
+INSERT INTO dislikes DEFAULT VALUES
+`
+
+func (q *Queries) CreateDislike(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, createDislike)
+	return err
+}
+
 const createLike = `-- name: CreateLike :exec
 
 INSERT INTO likes DEFAULT VALUES

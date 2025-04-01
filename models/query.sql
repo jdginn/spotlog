@@ -50,6 +50,9 @@ INSERT INTO track_plays (
 -- name: CreateLike :exec
 INSERT INTO likes DEFAULT VALUES;
 
+-- name: CreateDislike :exec
+INSERT INTO dislikes DEFAULT VALUES;
+
 -- TODO:
 -- TODO name: GetLikesForTrackByName
 -- TODO name: GetLikesForTrackByID

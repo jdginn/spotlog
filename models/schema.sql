@@ -27,3 +27,7 @@ CREATE TABLE track_plays (
 CREATE TABLE likes (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
+
+CREATE TABLE dislikes (
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);

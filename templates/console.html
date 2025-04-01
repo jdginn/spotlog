@@ -1,82 +1,84 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Selah Spotify</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            margin-top: 50px;
-            background-color: #333333; /* Much darker grey */
-            color: #fff; /* White text */
-        }
-        .button {
-            display: inline-block;
-            padding: 30px 60px; /* 3x bigger */
-            font-size: 48px; /* 3x bigger */
-            cursor: pointer;
-            text-align: center;
-            text-decoration: none;
-            outline: none;
-            color: #fff; /* White text */
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 2px #666; /* Smaller drop shadow */
-        }
-        .button:active {
-            box-shadow: 0 1px #333; /* Smaller drop shadow when active */
-            transform: translateY(2px);
-        }
-        .like {
-            background-color: #4CAF50;
-        }
-        .dislike {
-            background-color: #d32f2f; /* Deeper red */
-        }
-        .message {
-            margin-top: 20px;
-            font-size: 18px;
-            color: #fff; /* White text */
-        }
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        margin-top: 50px;
+        background-color: #333333; /* Much darker grey */
+        color: #fff; /* White text */
+      }
+      .button {
+        display: inline-block;
+        padding: 30px 40px; /* 3x bigger */
+        font-size: 36px; /* 3x bigger */
+        cursor: pointer;
+        text-align: center;
+        text-decoration: none;
+        outline: none;
+        color: #fff; /* White text */
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 2px #666; /* Smaller drop shadow */
+      }
+      .button:active {
+        box-shadow: 0 1px #333; /* Smaller drop shadow when active */
+        transform: translateY(2px);
+      }
+      .like {
+        background-color: #4caf50;
+      }
+      .dislike {
+        background-color: #d32f2f; /* Deeper red */
+      }
+      .message {
+        margin-top: 20px;
+        font-size: 18px;
+        color: #fff; /* White text */
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <h1>Selah Spotify</h1>
     <button class="button like" onclick="registerLike()">Zseniális</button>
-    <button class="button dislike" onclick="registerDislike()">Borzasztó</button>
+    <button class="button dislike" onclick="registerDislike()">
+      Borzasztó
+    </button>
     <div class="message" id="messageBox"></div>
 
     <script>
-        function showMessage(message) {
-            const messageBox = document.getElementById('messageBox');
-            messageBox.textContent = message;
-        }
+      function showMessage(message) {
+        const messageBox = document.getElementById("messageBox");
+        messageBox.textContent = message;
+      }
 
-        function registerLike() {
-            fetch('/like', { method: 'POST' })
-                .then(response => response.text())
-                .then(data => {
-                    showMessage('Like registered!');
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showMessage('Error registering like.');
-                });
-        }
+      function registerLike() {
+        fetch("/like", { method: "POST" })
+          .then((response) => response.text())
+          .then((data) => {
+            showMessage("Like registered!");
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showMessage("Error registering like.");
+          });
+      }
 
-        function registerDislike() {
-            fetch('/dislike', { method: 'POST' })
-                .then(response => response.text())
-                .then(data => {
-                    showMessage('Dislike registered!');
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showMessage('Error registering dislike.');
-                });
-        }
+      function registerDislike() {
+        fetch("/dislike", { method: "POST" })
+          .then((response) => response.text())
+          .then((data) => {
+            showMessage("Dislike registered!");
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            showMessage("Error registering dislike.");
+          });
+      }
     </script>
-</body>
+  </body>
 </html>

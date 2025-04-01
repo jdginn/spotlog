@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zmb3/spotify/v2"
-	"github.com/zmb3/spotify/v2/auth"
+	spotifyauth "github.com/zmb3/spotify/v2/auth"
 
 	"github.com/jdginn/spotlog/models"
 )
@@ -45,13 +45,12 @@ func main() {
 		}
 	})
 	http.HandleFunc("/dislike", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Dislike registered"))
-		// err := db.CreateDislike(ctx)
-		// if err != nil {
-		// 	log.Println(fmt.Errorf("Error registering dislike: %w", err))
-		// } else {
-		// 	w.Write([]byte("Dislike registered"))
-		// }
+		err := db.CreateDislike(ctx)
+		if err != nil {
+			log.Println(fmt.Errorf("Error registering dislike: %w", err))
+		} else {
+			w.Write([]byte("Dislike registered"))
+		}
 	})
 	http.HandleFunc("/console", serveConsole)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +83,6 @@ func main() {
 		}
 		time.Sleep(time.Minute * 15)
 	}
-
 }
 
 func serveConsole(w http.ResponseWriter, r *http.Request) {
@@ -131,7 +129,6 @@ func updateRecentlyPlayed(ctx context.Context, client *spotify.Client, db *model
 		playlistContext := new(models.NullTrackPlayContext)
 		playlistContext.Scan(apiTrack.PlaybackContext.Type)
 		playlistIDs, err := db.ListPlaylistsByID(ctx)
-
 		if err != nil {
 			return fmt.Errorf("Error looking up playlist names: %w", err)
 		}
