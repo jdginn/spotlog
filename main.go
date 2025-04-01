@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/zmb3/spotify/v2/auth"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/zmb3/spotify/v2"
+	"github.com/zmb3/spotify/v2/auth"
 
 	"github.com/jdginn/spotlog/models"
 )
@@ -24,8 +25,35 @@ var (
 )
 
 func main() {
-	// first start an HTTP server
+	ctx := context.Background()
+	// Open connection to database
+	conn, err := pgx.Connect(ctx, os.Getenv("DATABASE_URL"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
+	defer conn.Close(ctx)
+	db := models.New(conn)
+
 	http.HandleFunc("/callback", completeAuth)
+	http.HandleFunc("/like", func(w http.ResponseWriter, r *http.Request) {
+		err := db.CreateLike(ctx)
+		if err != nil {
+			log.Println(fmt.Errorf("Error registering like: %w", err))
+		} else {
+			w.Write([]byte("Like registered"))
+		}
+	})
+	http.HandleFunc("/dislike", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Dislike registered"))
+		// err := db.CreateDislike(ctx)
+		// if err != nil {
+		// 	log.Println(fmt.Errorf("Error registering dislike: %w", err))
+		// } else {
+		// 	w.Write([]byte("Dislike registered"))
+		// }
+	})
+	http.HandleFunc("/console", serveConsole)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Got request for:", r.URL.String())
 	})
@@ -42,22 +70,12 @@ func main() {
 	// wait for auth to complete
 	client := <-ch
 
-	ctx := context.Background()
 	// use the client to make calls that require authorization
 	user, err := client.CurrentUser(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("You are logged in as:", user.ID)
-
-	// Open connection to database
-	conn, err := pgx.Connect(ctx, os.Getenv("DATABASE_URL"))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
-	}
-	defer conn.Close(ctx)
-	db := models.New(conn)
 
 	for {
 		log.Println("Pulling most recently played...")
@@ -67,6 +85,16 @@ func main() {
 		time.Sleep(time.Minute * 15)
 	}
 
+}
+
+func serveConsole(w http.ResponseWriter, r *http.Request) {
+	tmpl, err := template.ParseFiles("templates/console.html")
+	if err != nil {
+		http.Error(w, "Couldn't load template", http.StatusInternalServerError)
+		log.Println("Error loading template:", err)
+		return
+	}
+	tmpl.Execute(w, nil)
 }
 
 func completeAuth(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +143,6 @@ func updateRecentlyPlayed(ctx context.Context, client *spotify.Client, db *model
 			if !slices.Contains(playlistIDs, playlistID.String()) {
 				apiPlaylist, err := client.GetPlaylist(ctx, spotify.ID(playlistID))
 				if err != nil {
-					// TODO: when this happens, just say we don't know the ID
 					err = db.CreateTrackPlay(ctx, models.CreateTrackPlayParams{
 						PlayedAt: pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
 						TrackID:  apiTrack.Track.ID.String(),
