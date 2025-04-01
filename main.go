@@ -135,7 +135,7 @@ func updateRecentlyPlayed(ctx context.Context, client *spotify.Client, db *model
 				PlayedAt:   pgtype.Timestamp{Time: apiTrack.PlayedAt.UTC(), Valid: true},
 				TrackID:    apiTrack.Track.ID.String(),
 				Context:    *playlistContext,
-				PlaylistID: pgtype.Text{String: playlistID.String()},
+				PlaylistID: pgtype.Text{String: playlistID.String(), Valid: true},
 			})
 			if err != nil {
 				return fmt.Errorf("Error creating TrackPlay in database: %w", err)
