@@ -95,7 +95,7 @@ func updateRecentlyPlayed(ctx context.Context, client *spotify.Client, db *model
 		err := db.CreateTrack(ctx, models.CreateTrackParams{
 			SpotifyID:  apiTrack.Track.ID.String(),
 			Name:       apiTrack.Track.Name,
-			DurationMs: pgtype.Int4{Int32: int32(apiTrack.Track.Duration)},
+			DurationMs: pgtype.Int4{Int32: int32(apiTrack.Track.Duration), Valid: true},
 		})
 		if err != nil {
 			return fmt.Errorf("Error creating Track in database: %w", err)
